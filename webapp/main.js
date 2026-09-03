@@ -12,7 +12,9 @@ import {
   CONTACT_ATTRIBUTE_NAMES,
   CUSTOMER_TRANSLATION_TO_CUSTOMER_VOLUME,
   LOGGER_PREFIX,
+  POLLY_UNSUPPORTED_LANGUAGE_NAMES,
   TRANSCRIBE_PARTIAL_RESULTS_STABILITY,
+  TRANSCRIBE_TO_POLLY_LANGUAGE_OVERRIDES,
   TRANSLATE_LANGUAGE_CODE_OVERRIDES,
 } from "./constants";
 import { getLoginUrl, getValidTokens, handleRedirect, isAuthenticated, logout, setRedirectURI, startTokenRefreshTimer } from "./utils/authUtility";
@@ -160,6 +162,7 @@ const bindUIElements = () => {
     ccpContainer: document.querySelector("#ccpContainer"),
     ccpSection: document.getElementById("ccpSection"),
     ccpToggleButton: document.getElementById("ccpToggleButton"),
+    languageWarningBanner: document.getElementById("languageWarningBanner"),
 
     spnCurrentConnectInstanceURL: document.getElementById("spnCurrentConnectInstanceURL"),
     tbConnectInstanceURL: document.getElementById("tbConnectInstanceURL"),
@@ -1183,25 +1186,88 @@ function toTranslateLanguageCode(transcribeLanguageCode) {
   return TRANSLATE_LANGUAGE_CODE_OVERRIDES[transcribeLanguageCode] ?? transcribeLanguageCode.split("-")[0];
 }
 
+//Amazon Polly's language codes are not the same set as Amazon Transcribe's, so a Transcribe
+//code cannot be handed to the Amazon Polly select unmapped
+function toPollyLanguageCode(transcribeLanguageCode) {
+  if (isStringUndefinedNullEmpty(transcribeLanguageCode)) return null;
+  return TRANSCRIBE_TO_POLLY_LANGUAGE_OVERRIDES[transcribeLanguageCode] ?? transcribeLanguageCode;
+}
+
+const SELECT_RESULT = { APPLIED: "applied", UNAVAILABLE: "unavailable", LOCKED: "locked", SKIPPED: "skipped" };
+
 //Only applies a value the select actually offers, so an unexpected contact attribute leaves
 //the agent's saved preference in place instead of blanking the select
 function setSelectValueIfAvailable(selectElement, value, description) {
-  if (isStringUndefinedNullEmpty(value)) return false;
+  if (isStringUndefinedNullEmpty(value)) return SELECT_RESULT.SKIPPED;
 
   if (selectElement.disabled) {
     console.warn(`${LOGGER_PREFIX} - autoConfigureLanguages - ${description} is locked, not setting [${value}]`);
-    return false;
+    return SELECT_RESULT.LOCKED;
   }
 
   const isAvailable = Array.from(selectElement.options).some((option) => option.value === value);
   if (!isAvailable) {
     console.warn(`${LOGGER_PREFIX} - autoConfigureLanguages - ${description} does not offer [${value}], leaving [${selectElement.value}]`);
-    return false;
+    return SELECT_RESULT.UNAVAILABLE;
   }
 
   selectElement.value = value;
   console.info(`${LOGGER_PREFIX} - autoConfigureLanguages - ${description} set to [${value}]`);
-  return true;
+  return SELECT_RESULT.APPLIED;
+}
+
+function showLanguageWarnings(warnings) {
+  if (warnings.length < 1) {
+    clearLanguageWarnings();
+    return;
+  }
+
+  //Built as DOM nodes rather than innerHTML: these strings embed Contact Attribute values,
+  //which come from the contact flow and must never be parsed as markup
+  CCP_V2V.UI.languageWarningBanner.textContent = "";
+
+  const heading = document.createElement("strong");
+  heading.textContent = "Translation is limited on this call";
+  CCP_V2V.UI.languageWarningBanner.appendChild(heading);
+
+  const warningList = document.createElement("ul");
+  warnings.forEach((warning) => {
+    const warningItem = document.createElement("li");
+    warningItem.textContent = warning;
+    warningList.appendChild(warningItem);
+  });
+  CCP_V2V.UI.languageWarningBanner.appendChild(warningList);
+
+  CCP_V2V.UI.languageWarningBanner.classList.remove("hidden");
+  warnings.forEach((warning) => console.warn(`${LOGGER_PREFIX} - autoConfigureLanguages - ${warning}`));
+}
+
+function clearLanguageWarnings() {
+  CCP_V2V.UI.languageWarningBanner.textContent = "";
+  CCP_V2V.UI.languageWarningBanner.classList.add("hidden");
+}
+
+//Sets one direction's Amazon Polly language, returning a warning string when Amazon Polly cannot
+//speak that language at all. Without translated speech that direction falls back to the untranslated
+//voice, so the agent has to know before answering.
+function applyPollyLanguage(selectElement, transcribeLanguageCode, description, listenerDescription) {
+  const pollyLanguageCode = toPollyLanguageCode(transcribeLanguageCode);
+  const result = setSelectValueIfAvailable(selectElement, pollyLanguageCode, description);
+
+  if (result === SELECT_RESULT.APPLIED || result === SELECT_RESULT.SKIPPED) return { changed: result === SELECT_RESULT.APPLIED, warning: null };
+
+  if (result === SELECT_RESULT.LOCKED) {
+    return { changed: false, warning: `${description} is locked while transcription is running - stop transcription to change it.` };
+  }
+
+  const languageName = POLLY_UNSUPPORTED_LANGUAGE_NAMES[transcribeLanguageCode] ?? transcribeLanguageCode;
+  return {
+    changed: false,
+    warning:
+      `Amazon Polly cannot synthesize ${languageName} (${transcribeLanguageCode}). ` +
+      `The ${listenerDescription} will hear the original voice only, with no translated speech. ` +
+      `Amazon Polly is still set to ${selectElement.value} - change it manually if a different language is closer.`,
+  };
 }
 
 //Auto-configures the V2V language pair from Amazon Connect Contact Attributes, so the agent
@@ -1210,6 +1276,8 @@ function setSelectValueIfAvailable(selectElement, value, description) {
 //Amazon Polly language is the agent's language - and vice versa for the Agent section.
 async function autoConfigureLanguagesFromContact(contact) {
   try {
+    clearLanguageWarnings();
+
     const contactAttributes = contact.getAttributes();
 
     const customerLanguage = getContactAttributeValue(contactAttributes, CONTACT_ATTRIBUTE_NAMES.customerLanguage);
@@ -1231,19 +1299,21 @@ async function autoConfigureLanguagesFromContact(contact) {
     setSelectValueIfAvailable(CCP_V2V.UI.customerTranslateFromLanguageSelect, customerTranslateLanguage, "Customer Translate from language");
     setSelectValueIfAvailable(CCP_V2V.UI.customerTranslateToLanguageSelect, agentTranslateLanguage, "Customer Translate to language");
     //...and is synthesized in the agent's language, because the agent hears it
-    const customerPollyChanged = setSelectValueIfAvailable(CCP_V2V.UI.customerPollyLanguageCodeSelect, agentLanguage, "Customer Amazon Polly language");
+    const customerPolly = applyPollyLanguage(CCP_V2V.UI.customerPollyLanguageCodeSelect, agentLanguage, "Customer Amazon Polly language", "agent");
 
     //Agent speaks -> transcribe in the agent's language -> translate to the customer's language
     setSelectValueIfAvailable(CCP_V2V.UI.agentTranscribeLanguageSelect, agentLanguage, "Agent Transcribe language");
     setSelectValueIfAvailable(CCP_V2V.UI.agentTranslateFromLanguageSelect, agentTranslateLanguage, "Agent Translate from language");
     setSelectValueIfAvailable(CCP_V2V.UI.agentTranslateToLanguageSelect, customerTranslateLanguage, "Agent Translate to language");
     //...and is synthesized in the customer's language, because the customer hears it
-    const agentPollyChanged = setSelectValueIfAvailable(CCP_V2V.UI.agentPollyLanguageCodeSelect, customerLanguage, "Agent Amazon Polly language");
+    const agentPolly = applyPollyLanguage(CCP_V2V.UI.agentPollyLanguageCodeSelect, customerLanguage, "Agent Amazon Polly language", "customer");
+
+    showLanguageWarnings([agentPolly.warning, customerPolly.warning].filter((warning) => warning != null));
 
     //Amazon Polly voices are per language + engine, so reload the voice lists before applying overrides
     const pollyVoiceReloads = [];
-    if (customerPollyChanged) pollyVoiceReloads.push(loadCustomerPollyVoiceIds());
-    if (agentPollyChanged) pollyVoiceReloads.push(loadAgentPollyVoiceIds());
+    if (customerPolly.changed) pollyVoiceReloads.push(loadCustomerPollyVoiceIds());
+    if (agentPolly.changed) pollyVoiceReloads.push(loadAgentPollyVoiceIds());
     await Promise.all(pollyVoiceReloads);
 
     setSelectValueIfAvailable(
@@ -1344,6 +1414,8 @@ function cleanUpUI() {
 
   CCP_V2V.UI.customerStartTranscriptionButton.disabled = true;
   CCP_V2V.UI.agentStartTranscriptionButton.disabled = true;
+
+  clearLanguageWarnings();
 
   enableMicrophoneAndSpeakerSelection();
 }
