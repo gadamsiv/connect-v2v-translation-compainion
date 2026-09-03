@@ -2,9 +2,11 @@
 
 Changes made in this fork of the Amazon Connect V2V sample, which repositions the webapp as a **companion panel** beside the Amazon Connect agent workspace. See `README-Companion.md` for the full design notes.
 
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This fork has no releases, so everything sits under Unreleased. Upstream fork point: `382803a`.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Upstream fork point: `382803a`.
 
-## [Unreleased]
+## [1.0.0] - 2026-09-03
+
+First cut of the companion-panel fork. Feature-complete against the original change list, but **not yet validated against a live Amazon Connect instance** — see Known gaps.
 
 ### Added
 
@@ -49,6 +51,7 @@ Commits, newest first:
 
 | Commit | Date | Summary |
 | --- | --- | --- |
+| `434f929` | 2026-09-03 | Add sample contact flow and CHANGELOG |
 | `2afe7ec` | 2026-09-03 | Record fork architecture decisions in CLAUDE.md |
 | `5072f49` | 2026-09-03 | Map Transcribe language codes to Polly, warn when unsupported |
 | `3d63d19` | 2026-09-03 | Reposition webapp as an agent-workspace companion panel |
