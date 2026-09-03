@@ -19,6 +19,8 @@ This checkout is a fork that repositions the webapp as a **companion panel** bes
 
 `README-Companion.md` documents the fork in full. `README.md`, `SETUP.md`, and `DEMO.md` are upstream docs — **do not edit them**. Fork-specific behaviour changes go in `README-Companion.md`, and it must be updated in the same change as the code, not afterwards.
 
+`CHANGELOG.md` tracks every fork change (Keep a Changelog format, everything under `[Unreleased]`). Add an entry there in the same commit as the change. It carries `Rejected` and `Known gaps` sections as well as the usual ones — record dead ends and unverified assumptions there, not just features.
+
 ### Closed questions — do not re-litigate
 
 Three plausible-sounding changes have been investigated and rejected. Each has its reasoning and evidence in `README-Companion.md`; the short version:

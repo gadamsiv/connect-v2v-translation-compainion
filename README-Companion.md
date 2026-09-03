@@ -58,6 +58,25 @@ Set these in the contact flow (a **Set contact attributes** block, or a Lambda) 
 
 If no customer-language attribute is present, nothing is changed and the agent's saved selections stand.
 
+### Sample contact flow
+
+`samples/contact-flows/V2V-Companion-Language-Select.json` is an importable flow that sets these attributes. It plays a DTMF menu, sets `v2vCustomerLanguage` from the digit pressed, sets `v2vAgentLanguage` to `en-US`, then transfers to a queue.
+
+| Digit | Sets | Why it is in the sample |
+| --- | --- | --- |
+| 1 | `es-ES` + both `VoiceId`s | The happy path, and the only branch exercising the voice overrides |
+| 2 | `zh-CN` | Exercises `TRANSCRIBE_TO_POLLY_LANGUAGE_OVERRIDES` — Polly must resolve this to `cmn-CN` |
+| 3 | `fr-FR` | A plain pass-through code needing no mapping |
+| 4 | `th-TH` | Exercises the unsupported-language banner — Polly cannot speak Thai |
+| timeout / no match | nothing | Exercises the no-attribute path, where the agent's saved selections stand |
+
+**Before importing, note two things:**
+
+1. The queue is a placeholder — `arn:aws:connect:REGION:ACCOUNT_ID:instance/INSTANCE_ID/queue/QUEUE_ID`. Open the **Set working queue** block after import and pick a real queue, or publishing will fail.
+2. This flow's structure is verified (no dangling transitions, every action reachable from the entry point) but **it has not been import-tested against a live Amazon Connect instance.** If import rejects it, the flow is small enough to rebuild by hand in a few minutes: a **Set contact attributes** block setting `v2vCustomerLanguage`, then **Set working queue**, then **Transfer to queue**. That minimal three-block version is all the app needs.
+
+To import: Amazon Connect console → **Routing → Flows → Create flow → ⌄ (top right) → Import flow (beta)**, then publish and attach it to a phone number.
+
 ### How the languages map
 
 This is the part that trips people up. The **Customer** column transcribes the customer and speaks the translation *to the agent*; the **Agent** column transcribes the agent and speaks the translation *to the customer*. So the Amazon Polly language in each column is the **listener's** language, not the speaker's.
