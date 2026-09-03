@@ -130,7 +130,7 @@ The banner clears on the next contact and in `cleanUpUI()` when the contact ends
 
 - A value is applied only if the `<select>` actually offers it. An unrecognised attribute logs a warning and leaves the agent's saved preference in place rather than blanking the control.
 - Controls locked mid-transcription are skipped, and that also raises a banner warning telling the agent to stop transcription first.
-- Amazon Polly voice lists are reloaded for the new language/engine *before* the optional `VoiceId` overrides are applied.
+- Amazon Polly voice lists are reloaded for the new language/engine *before* the optional `VoiceId` overrides are applied. That reload is an AWS call (`DescribeVoices`) happening on contact connect, so it passes `suppressAlert: true`: `raiseError()` is an `alert()`, and a modal dialog mid-call blocks the main thread, freezing transcription and translation until the agent dismisses it. On failure the existing voice options are kept rather than cleared — an empty select would leave Amazon Polly with no `VoiceId` and break synthesis for the rest of the call — and the failure is reported as a banner line.
 - The banner is built with `createElement` / `textContent`, never `innerHTML`. The strings embed Contact Attribute values, which originate in the contact flow and must not be parsed as markup.
 - The whole function is wrapped in `try`/`catch`. Auto-configuration can never block or fail a call — worst case the agent sets the languages by hand, as upstream.
 

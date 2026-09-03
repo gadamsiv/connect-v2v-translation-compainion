@@ -4,6 +4,16 @@ Changes made in this fork of the Amazon Connect V2V sample, which repositions th
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Upstream fork point: `382803a`.
 
+## [Unreleased]
+
+### Fixed
+
+- **A failed `DescribeVoices` during a live call no longer blocks the agent or breaks synthesis.** `1.0.0` made `loadCustomerPollyVoiceIds()` / `loadAgentPollyVoiceIds()` run automatically on contact connect; previously they only ran on page load and on manual select changes. Their error path called `raiseError()` — an `alert()`, which blocks the main thread until dismissed, freezing transcription handling and translate calls mid-call — and then emptied the voice select, leaving Amazon Polly with no `VoiceId` so that direction's synthesis stayed broken for the rest of the call. Both functions now take `{ suppressAlert }`, return a success boolean, and leave the existing options in place on failure. The auto-config path passes `suppressAlert: true` and reports the failure as a banner line instead.
+
+### Changed
+
+- Language warnings now render before the Amazon Polly voice reload is awaited, so the "Polly cannot synthesize X" message is not delayed by a network call. The banner re-renders only if a voice reload subsequently fails.
+
 ## [1.0.0] - 2026-09-03
 
 First cut of the companion-panel fork. Feature-complete against the original change list, but **not yet validated against a live Amazon Connect instance** — see Known gaps.

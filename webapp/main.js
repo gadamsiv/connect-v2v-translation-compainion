@@ -147,7 +147,7 @@ const onLoad = async () => {
   loadTranslateLanguageCodes();
   loadPollyEngines();
   loadPollyLanguageCodes();
-  loadCustomerPollyVoiceIds().then(loadAgentPollyVoiceIds);
+  loadCustomerPollyVoiceIds().then(() => loadAgentPollyVoiceIds());
   initCCP(onConnectInitialized);
 };
 
@@ -1121,15 +1121,24 @@ function loadPollyEngines() {
   }
 }
 
-async function loadCustomerPollyVoiceIds() {
+//Returns true when the voice list was refreshed. Pass suppressAlert when called automatically
+//(i.e. from contact connect) rather than from an agent gesture: raiseError is an alert(), which
+//blocks the main thread mid-call. Destructuring an options object also makes this safe to use
+//directly as a "change" listener - an Event has no suppressAlert property, so it defaults to false.
+async function loadCustomerPollyVoiceIds({ suppressAlert = false } = {}) {
   const customerSelectedLanguageCode = CCP_V2V.UI.customerPollyLanguageCodeSelect.value;
   const customerSelectedPollyEngine = CCP_V2V.UI.customerPollyEngineSelect.value;
 
-  const pollyVoices = await describeVoices(customerSelectedLanguageCode, customerSelectedPollyEngine).catch((error) => {
+  let pollyVoices;
+  try {
+    pollyVoices = await describeVoices(customerSelectedLanguageCode, customerSelectedPollyEngine);
+  } catch (error) {
     console.error(`${LOGGER_PREFIX} - loadCustomerPollyVoiceIds - Error describing voices:`, error);
-    raiseError(`Error describing voices: ${error}`);
-    return [];
-  });
+    //Leave the existing options in place. Emptying the select would leave Amazon Polly with no
+    //VoiceId, breaking synthesis for the rest of the call.
+    if (!suppressAlert) raiseError(`Error describing voices: ${error}`);
+    return false;
+  }
 
   //clear pollyVoiceIdSelect
   CCP_V2V.UI.customerPollyVoiceIdSelect.innerHTML = "";
@@ -1145,17 +1154,22 @@ async function loadCustomerPollyVoiceIds() {
   if (savedCustomerPollyVoiceId) {
     CCP_V2V.UI.customerPollyVoiceIdSelect.value = savedCustomerPollyVoiceId;
   }
+  return true;
 }
 
-async function loadAgentPollyVoiceIds() {
+//See loadCustomerPollyVoiceIds for why suppressAlert exists
+async function loadAgentPollyVoiceIds({ suppressAlert = false } = {}) {
   const agentSelectedLanguageCode = CCP_V2V.UI.agentPollyLanguageCodeSelect.value;
   const agentSelectedPollyEngine = CCP_V2V.UI.agentPollyEngineSelect.value;
 
-  const pollyVoices = await describeVoices(agentSelectedLanguageCode, agentSelectedPollyEngine).catch((error) => {
+  let pollyVoices;
+  try {
+    pollyVoices = await describeVoices(agentSelectedLanguageCode, agentSelectedPollyEngine);
+  } catch (error) {
     console.error(`${LOGGER_PREFIX} - loadAgentPollyVoiceIds - Error describing voices:`, error);
-    raiseError(`Error describing voices: ${error}`);
-    return [];
-  });
+    if (!suppressAlert) raiseError(`Error describing voices: ${error}`);
+    return false;
+  }
 
   //clear pollyVoiceIdSelect
   CCP_V2V.UI.agentPollyVoiceIdSelect.innerHTML = "";
@@ -1171,6 +1185,7 @@ async function loadAgentPollyVoiceIds() {
   if (savedAgentPollyVoiceId) {
     CCP_V2V.UI.agentPollyVoiceIdSelect.value = savedAgentPollyVoiceId;
   }
+  return true;
 }
 
 function getContactAttributeValue(contactAttributes, attributeNames) {
@@ -1308,13 +1323,21 @@ async function autoConfigureLanguagesFromContact(contact) {
     //...and is synthesized in the customer's language, because the customer hears it
     const agentPolly = applyPollyLanguage(CCP_V2V.UI.agentPollyLanguageCodeSelect, customerLanguage, "Agent Amazon Polly language", "customer");
 
-    showLanguageWarnings([agentPolly.warning, customerPolly.warning].filter((warning) => warning != null));
+    //Show the language warnings before awaiting anything - they must not wait on a network call
+    const warnings = [agentPolly.warning, customerPolly.warning].filter((warning) => warning != null);
+    showLanguageWarnings(warnings);
 
-    //Amazon Polly voices are per language + engine, so reload the voice lists before applying overrides
-    const pollyVoiceReloads = [];
-    if (customerPolly.changed) pollyVoiceReloads.push(loadCustomerPollyVoiceIds());
-    if (agentPolly.changed) pollyVoiceReloads.push(loadAgentPollyVoiceIds());
-    await Promise.all(pollyVoiceReloads);
+    //Amazon Polly voices are per language + engine, so reload the voice lists before applying
+    //overrides. suppressAlert because this runs on contact connect: a modal alert() here would
+    //block the main thread mid-call.
+    const [customerVoicesLoaded, agentVoicesLoaded] = await Promise.all([
+      customerPolly.changed ? loadCustomerPollyVoiceIds({ suppressAlert: true }) : true,
+      agentPolly.changed ? loadAgentPollyVoiceIds({ suppressAlert: true }) : true,
+    ]);
+
+    if (!agentVoicesLoaded) warnings.push("Could not load Amazon Polly voices for the customer's language. The previously selected Agent voice is still in use.");
+    if (!customerVoicesLoaded) warnings.push("Could not load Amazon Polly voices for the agent's language. The previously selected Customer voice is still in use.");
+    if (!agentVoicesLoaded || !customerVoicesLoaded) showLanguageWarnings(warnings);
 
     setSelectValueIfAvailable(
       CCP_V2V.UI.customerPollyVoiceIdSelect,
