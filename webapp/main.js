@@ -9,9 +9,11 @@ import { getConnectURLS, addUpdateLocalStorageKey, getLocalStorageValueByKey, ba
 import {
   AGENT_TRANSLATION_TO_AGENT_VOLUME,
   AUDIO_FEEDBACK_FILE_PATH,
+  CONTACT_ATTRIBUTE_NAMES,
   CUSTOMER_TRANSLATION_TO_CUSTOMER_VOLUME,
   LOGGER_PREFIX,
   TRANSCRIBE_PARTIAL_RESULTS_STABILITY,
+  TRANSLATE_LANGUAGE_CODE_OVERRIDES,
 } from "./constants";
 import { getLoginUrl, getValidTokens, handleRedirect, isAuthenticated, logout, setRedirectURI, startTokenRefreshTimer } from "./utils/authUtility";
 import { AudioStreamManager } from "./managers/AudioStreamManager";
@@ -135,6 +137,7 @@ const onLoad = async () => {
   bindUIElements();
   initEventListeners();
   CCP_V2V.UI.logoutButton.style.display = "block";
+  restoreCCPPanelVisibility();
   getDevices();
   setAudioElementsSinkIds();
   loadTranscribeLanguageCodes();
@@ -155,6 +158,8 @@ const bindUIElements = () => {
     divMain: document.getElementById("divMain"),
 
     ccpContainer: document.querySelector("#ccpContainer"),
+    ccpSection: document.getElementById("ccpSection"),
+    ccpToggleButton: document.getElementById("ccpToggleButton"),
 
     spnCurrentConnectInstanceURL: document.getElementById("spnCurrentConnectInstanceURL"),
     tbConnectInstanceURL: document.getElementById("tbConnectInstanceURL"),
@@ -248,6 +253,10 @@ const initEventListeners = () => {
   });
 
   CCP_V2V.UI.logoutButton.addEventListener("click", logout);
+
+  CCP_V2V.UI.ccpToggleButton.addEventListener("click", () => {
+    setCCPPanelVisible(CCP_V2V.UI.ccpSection.classList.contains("ccp-collapsed"));
+  });
 
   CCP_V2V.UI.btnStreamFile.addEventListener("click", streamFile);
   CCP_V2V.UI.btnStreamMic.addEventListener("click", streamMic);
@@ -391,6 +400,19 @@ const initEventListeners = () => {
   });
 };
 
+// The CCP iframe is collapsed rather than removed: it owns the softphone session and the
+// WebRTC peer connection that this app replaces audio tracks on. Agents drive call control
+// from the Amazon Connect agent workspace, so the panel is only shown for troubleshooting.
+function setCCPPanelVisible(isVisible) {
+  CCP_V2V.UI.ccpSection.classList.toggle("ccp-collapsed", !isVisible);
+  CCP_V2V.UI.ccpToggleButton.textContent = isVisible ? "Hide" : "Show";
+  addUpdateLocalStorageKey("ccpPanelVisible", String(isVisible));
+}
+
+function restoreCCPPanelVisibility() {
+  setCCPPanelVisible(getLocalStorageValueByKey("ccpPanelVisible") === "true");
+}
+
 const initCCP = async (onConnectInitialized) => {
   const { connectCCPURL } = getConnectURLS();
   if (!window.connect.core.initialized) {
@@ -486,6 +508,8 @@ function onContactConnected(contact) {
 
   CCP_V2V.UI.customerStartTranscriptionButton.disabled = false;
   CCP_V2V.UI.agentStartTranscriptionButton.disabled = false;
+
+  autoConfigureLanguagesFromContact(contact);
 }
 
 function onContactEnded(contact) {
@@ -1143,6 +1167,98 @@ async function loadAgentPollyVoiceIds() {
   const savedAgentPollyVoiceId = getLocalStorageValueByKey("agentPollyVoiceId");
   if (savedAgentPollyVoiceId) {
     CCP_V2V.UI.agentPollyVoiceIdSelect.value = savedAgentPollyVoiceId;
+  }
+}
+
+function getContactAttributeValue(contactAttributes, attributeNames) {
+  for (const attributeName of attributeNames) {
+    const attributeValue = contactAttributes?.[attributeName]?.value;
+    if (!isStringUndefinedNullEmpty(attributeValue)) return attributeValue.trim();
+  }
+  return null;
+}
+
+function toTranslateLanguageCode(transcribeLanguageCode) {
+  if (isStringUndefinedNullEmpty(transcribeLanguageCode)) return null;
+  return TRANSLATE_LANGUAGE_CODE_OVERRIDES[transcribeLanguageCode] ?? transcribeLanguageCode.split("-")[0];
+}
+
+//Only applies a value the select actually offers, so an unexpected contact attribute leaves
+//the agent's saved preference in place instead of blanking the select
+function setSelectValueIfAvailable(selectElement, value, description) {
+  if (isStringUndefinedNullEmpty(value)) return false;
+
+  if (selectElement.disabled) {
+    console.warn(`${LOGGER_PREFIX} - autoConfigureLanguages - ${description} is locked, not setting [${value}]`);
+    return false;
+  }
+
+  const isAvailable = Array.from(selectElement.options).some((option) => option.value === value);
+  if (!isAvailable) {
+    console.warn(`${LOGGER_PREFIX} - autoConfigureLanguages - ${description} does not offer [${value}], leaving [${selectElement.value}]`);
+    return false;
+  }
+
+  selectElement.value = value;
+  console.info(`${LOGGER_PREFIX} - autoConfigureLanguages - ${description} set to [${value}]`);
+  return true;
+}
+
+//Auto-configures the V2V language pair from Amazon Connect Contact Attributes, so the agent
+//does not have to set From/To languages and Amazon Polly voices manually on every contact.
+//The Customer section transcribes the customer and speaks the translation TO the agent, so its
+//Amazon Polly language is the agent's language - and vice versa for the Agent section.
+async function autoConfigureLanguagesFromContact(contact) {
+  try {
+    const contactAttributes = contact.getAttributes();
+
+    const customerLanguage = getContactAttributeValue(contactAttributes, CONTACT_ATTRIBUTE_NAMES.customerLanguage);
+    if (isStringUndefinedNullEmpty(customerLanguage)) {
+      console.info(`${LOGGER_PREFIX} - autoConfigureLanguages - No customer language Contact Attribute found, keeping current selection`);
+      return;
+    }
+
+    //Fall back to whatever the agent already has selected (saved preference, or the en-US default)
+    const agentLanguage = getContactAttributeValue(contactAttributes, CONTACT_ATTRIBUTE_NAMES.agentLanguage) ?? CCP_V2V.UI.agentTranscribeLanguageSelect.value;
+
+    console.info(`${LOGGER_PREFIX} - autoConfigureLanguages - customer [${customerLanguage}], agent [${agentLanguage}]`);
+
+    const customerTranslateLanguage = toTranslateLanguageCode(customerLanguage);
+    const agentTranslateLanguage = toTranslateLanguageCode(agentLanguage);
+
+    //Customer speaks -> transcribe in the customer's language -> translate to the agent's language
+    setSelectValueIfAvailable(CCP_V2V.UI.customerTranscribeLanguageSelect, customerLanguage, "Customer Transcribe language");
+    setSelectValueIfAvailable(CCP_V2V.UI.customerTranslateFromLanguageSelect, customerTranslateLanguage, "Customer Translate from language");
+    setSelectValueIfAvailable(CCP_V2V.UI.customerTranslateToLanguageSelect, agentTranslateLanguage, "Customer Translate to language");
+    //...and is synthesized in the agent's language, because the agent hears it
+    const customerPollyChanged = setSelectValueIfAvailable(CCP_V2V.UI.customerPollyLanguageCodeSelect, agentLanguage, "Customer Amazon Polly language");
+
+    //Agent speaks -> transcribe in the agent's language -> translate to the customer's language
+    setSelectValueIfAvailable(CCP_V2V.UI.agentTranscribeLanguageSelect, agentLanguage, "Agent Transcribe language");
+    setSelectValueIfAvailable(CCP_V2V.UI.agentTranslateFromLanguageSelect, agentTranslateLanguage, "Agent Translate from language");
+    setSelectValueIfAvailable(CCP_V2V.UI.agentTranslateToLanguageSelect, customerTranslateLanguage, "Agent Translate to language");
+    //...and is synthesized in the customer's language, because the customer hears it
+    const agentPollyChanged = setSelectValueIfAvailable(CCP_V2V.UI.agentPollyLanguageCodeSelect, customerLanguage, "Agent Amazon Polly language");
+
+    //Amazon Polly voices are per language + engine, so reload the voice lists before applying overrides
+    const pollyVoiceReloads = [];
+    if (customerPollyChanged) pollyVoiceReloads.push(loadCustomerPollyVoiceIds());
+    if (agentPollyChanged) pollyVoiceReloads.push(loadAgentPollyVoiceIds());
+    await Promise.all(pollyVoiceReloads);
+
+    setSelectValueIfAvailable(
+      CCP_V2V.UI.customerPollyVoiceIdSelect,
+      getContactAttributeValue(contactAttributes, CONTACT_ATTRIBUTE_NAMES.customerVoiceId),
+      "Customer Amazon Polly VoiceId"
+    );
+    setSelectValueIfAvailable(
+      CCP_V2V.UI.agentPollyVoiceIdSelect,
+      getContactAttributeValue(contactAttributes, CONTACT_ATTRIBUTE_NAMES.agentVoiceId),
+      "Agent Amazon Polly VoiceId"
+    );
+  } catch (error) {
+    //Never block the call on auto-configuration - the agent can always set the languages manually
+    console.error(`${LOGGER_PREFIX} - autoConfigureLanguages - Error auto-configuring languages from Contact Attributes:`, error);
   }
 }
 

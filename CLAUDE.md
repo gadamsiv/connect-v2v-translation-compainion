@@ -13,6 +13,12 @@ Two halves:
 
 `SETUP.md` is the deployment guide, `DEMO.md` documents the UI controls and the Transcribe partial-results-stability behaviour.
 
+## This fork: companion panel
+
+This checkout is a fork that repositions the webapp as a **companion panel** beside the Amazon Connect agent workspace rather than the agent's primary interface. `README-Companion.md` documents the fork's deltas, the Contact Attribute contract, and the still-open Cognito-login decision.
+
+`README.md`, `SETUP.md`, and `DEMO.md` are upstream docs — **do not edit them**. Fork-specific behaviour changes go in `README-Companion.md`, and it must be updated in the same change as the code, not afterwards.
+
 ## Commands
 
 Nearly everything is run from `cdk-stacks/`.
