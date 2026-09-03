@@ -4,7 +4,9 @@ Changes made in this fork of the Amazon Connect V2V sample, which repositions th
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Upstream fork point: `382803a`.
 
-## [Unreleased]
+## [1.0.1] - 2026-09-03
+
+Bug fix for a defect introduced by `1.0.0`'s auto-configuration. No new features.
 
 ### Fixed
 
@@ -61,6 +63,8 @@ Commits, newest first:
 
 | Commit | Date | Summary |
 | --- | --- | --- |
+| `f90ad43` | 2026-09-03 | Don't alert() or empty the voice list when DescribeVoices fails mid-call |
+| `6d97ff8` | 2026-09-03 | Cut the companion-panel work as 1.0.0 in CHANGELOG |
 | `434f929` | 2026-09-03 | Add sample contact flow and CHANGELOG |
 | `2afe7ec` | 2026-09-03 | Record fork architecture decisions in CLAUDE.md |
 | `5072f49` | 2026-09-03 | Map Transcribe language codes to Polly, warn when unsupported |
