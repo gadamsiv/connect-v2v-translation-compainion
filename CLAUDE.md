@@ -15,9 +15,32 @@ Two halves:
 
 ## This fork: companion panel
 
-This checkout is a fork that repositions the webapp as a **companion panel** beside the Amazon Connect agent workspace rather than the agent's primary interface. `README-Companion.md` documents the fork's deltas, the Contact Attribute contract, and the still-open Cognito-login decision.
+This checkout is a fork that repositions the webapp as a **companion panel** beside the Amazon Connect agent workspace rather than the agent's primary interface: call control happens in the workspace, the CCP panel here is collapsed, and the translation languages configure themselves from Contact Attributes on connect.
 
-`README.md`, `SETUP.md`, and `DEMO.md` are upstream docs — **do not edit them**. Fork-specific behaviour changes go in `README-Companion.md`, and it must be updated in the same change as the code, not afterwards.
+`README-Companion.md` documents the fork in full. `README.md`, `SETUP.md`, and `DEMO.md` are upstream docs — **do not edit them**. Fork-specific behaviour changes go in `README-Companion.md`, and it must be updated in the same change as the code, not afterwards.
+
+### Closed questions — do not re-litigate
+
+Three plausible-sounding changes have been investigated and rejected. Each has its reasoning and evidence in `README-Companion.md`; the short version:
+
+- **Do not switch `initCCP()` to `connect.core.initSharedWorker()`.** That function is CCP-internal, hard-asserts Connect session tokens this app cannot obtain, and needs a same-origin `SharedWorker` URL. It throws on its first assert. The CCP iframe already runs the shared worker, so `initCCP()` is what preserves peer-connection ownership.
+- **Do not package this as an Amazon Connect 3PA.** A 3PA panel is a separate document, and neither `RTCPeerConnection` (not structured-cloneable) nor `MediaStream` (not transferable between documents) can cross that boundary. The panel could never reach the workspace's audio. The standalone pop-out is the final architecture here, not a stopgap.
+- **Do not remove the Cognito login.** The Cognito Identity Pool is the only source of the AWS credentials signing Transcribe/Translate/Polly. Removing it means enabling unauthenticated Identity Pool access, which would let anyone reaching the CloudFront URL spend AWS budget.
+
+### Three services, three language code sets
+
+The single most error-prone thing in this fork. The Transcribe, Translate, and Polly language selects are populated from three unrelated sources — Transcribe's `LanguageCode` enum (`main.js:732`), Translate's `ListLanguages` API (`main.js:938`), and Polly's `LanguageCode` enum (`main.js:1074`) — so a code from one is not valid in another. `constants.js` holds two conversion maps:
+
+- `TRANSLATE_LANGUAGE_CODE_OVERRIDES` — Translate wants the region stripped (`es-ES` → `es`) except for variants it treats as distinct languages.
+- `TRANSCRIBE_TO_POLLY_LANGUAGE_OVERRIDES` — six languages Polly supports under a different code (`zh-CN` → `cmn-CN`, `ar-SA` → `arb`, …).
+
+Only **35 of Transcribe's 54** streaming languages are synthesizable by Polly. The other 19 are listed in `POLLY_UNSUPPORTED_LANGUAGE_NAMES` and produce a page-level banner, because that direction of the call gets no translated speech at all. If you touch the language plumbing, re-run the exhaustiveness check: the unsupported list must stay exactly `(Transcribe codes absent from Polly) − (overridden codes)`.
+
+Also note the direction inversion, which reads backwards until you see why: the **Customer** column transcribes the customer and speaks *to the agent*, so its Polly language is the agent's — and vice versa. The Polly language in each column is the listener's, not the speaker's.
+
+### Contact Attributes are untrusted input
+
+Values from `contact.getAttributes()` originate in the contact flow. Never interpolate them into `innerHTML`; build DOM nodes with `textContent`, as `showLanguageWarnings()` does.
 
 ## Commands
 
