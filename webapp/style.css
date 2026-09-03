@@ -74,6 +74,55 @@ main {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
+/* Collapse the CCP without display:none - the iframe must stay rendered because it
+   owns the softphone session and the WebRTC peer connection this app streams into. */
+#ccpSection.ccp-collapsed #ccpContainer {
+  height: 0;
+  border: none;
+  box-shadow: none;
+}
+
+#ccpSection:not(.ccp-collapsed) #ccpHiddenNote {
+  display: none;
+}
+
+#ccpHiddenNote {
+  margin: 0;
+  font-size: 12px;
+  color: #666;
+}
+
+#ccpToggleButton {
+  float: right;
+  font-size: 12px;
+  font-weight: normal;
+}
+
+/* Amazon Polly cannot synthesize every language Amazon Transcribe can hear. When that
+   happens one direction of the call gets no translated speech, which the agent must notice
+   before answering - so it is a page-level banner, not a console warning. */
+.warning-banner {
+  background-color: #fdf3d8;
+  border: 1px solid #e0b400;
+  border-left: 5px solid #e0b400;
+  border-radius: 4px;
+  color: #6b5200;
+  padding: 8px 10px;
+  margin: 5px 0;
+  font-size: 1.05em;
+}
+
+.warning-banner strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 1.05em;
+}
+
+.warning-banner ul {
+  margin: 3px 0 0;
+  padding-left: 18px;
+}
+
 .control-group {
   background-color: #f9f9f9;
   border: 1px solid #ddd;

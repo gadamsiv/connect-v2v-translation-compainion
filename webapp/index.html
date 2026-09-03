@@ -16,10 +16,21 @@
         <button id="logoutButton" class="hidden">Logout</button>
       </header>
 
+      <div id="languageWarningBanner" class="warning-banner hidden" role="alert" aria-live="assertive"></div>
+
       <main>
         <div id="leftColumn">
-          <section id="ccpSection">
-            <h2>Contact Control Panel</h2>
+          <section id="ccpSection" class="ccp-collapsed">
+            <h2>
+              Contact Control Panel
+              <button
+                id="ccpToggleButton"
+                title="The CCP stays loaded because it owns this call's audio. Showing it is only useful for troubleshooting."
+              >
+                Show
+              </button>
+            </h2>
+            <p id="ccpHiddenNote">Call control stays in the agent workspace. This panel remains loaded to own the call audio.</p>
             <div id="ccpContainer"></div>
           </section>
           <section id="audioControls">

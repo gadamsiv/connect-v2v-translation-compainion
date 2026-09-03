@@ -1,0 +1,178 @@
+{
+  "Version": "2019-10-30",
+  "StartAction": "5d3cac24-0b73-46c5-a9a6-0c1464b34c59",
+  "Metadata": {
+    "entryPointPosition": { "x": 20, "y": 20 },
+    "ActionMetadata": {
+      "5d3cac24-0b73-46c5-a9a6-0c1464b34c59": { "position": { "x": 160, "y": 20 } },
+      "687a4622-970f-4956-b1a1-eaa06b7e4526": { "position": { "x": 380, "y": 20 }, "dynamicParams": [] },
+      "4c71535c-39db-4285-9a00-d4caaf54e932": {
+        "position": { "x": 600, "y": 20 },
+        "useDynamic": false,
+        "conditionMetadata": [
+          { "inputType": "Digits", "condition": { "Operator": "Equals", "Operands": ["1"] }, "id": "ff614342-c400-4ceb-8861-0bc09f29ac83" },
+          { "inputType": "Digits", "condition": { "Operator": "Equals", "Operands": ["2"] }, "id": "556334ad-0a74-4848-86be-c662519e5df0" },
+          { "inputType": "Digits", "condition": { "Operator": "Equals", "Operands": ["3"] }, "id": "d89edf4e-6e96-4f32-bccb-f6c1bf8d4e17" },
+          { "inputType": "Digits", "condition": { "Operator": "Equals", "Operands": ["4"] }, "id": "60b3c96a-30c8-4456-b78b-6eaa773bf27d" }
+        ]
+      },
+      "3ecf9f4c-c1a5-4aab-ace4-4613d95c1f4f": { "position": { "x": 860, "y": 20 }, "dynamicParams": [] },
+      "0a669853-f9ec-4d8c-ad4e-0074b45c918f": { "position": { "x": 860, "y": 190 }, "dynamicParams": [] },
+      "fe72626b-1268-4b2d-a6d7-af9c11b82a7a": { "position": { "x": 860, "y": 360 }, "dynamicParams": [] },
+      "3b7560fa-76d7-4dea-a5c7-61901e0c0eda": { "position": { "x": 860, "y": 530 }, "dynamicParams": [] },
+      "d3cc3825-609d-45a2-8e28-eee82c8b1805": { "position": { "x": 860, "y": 700 } },
+      "c463d117-0e60-43db-8f49-6534968c1a80": { "position": { "x": 1120, "y": 20 }, "queue": { "text": "REPLACE - select your queue" } },
+      "d65e1cdd-3293-413f-bcc6-44baab66edf7": { "position": { "x": 1340, "y": 20 } },
+      "bc7c33d3-eefe-40c9-851c-ff77c84368f4": { "position": { "x": 1340, "y": 220 } },
+      "960df861-1cb6-4fb7-b3d1-b64b66a00d76": { "position": { "x": 1560, "y": 220 } }
+    },
+    "Annotations": [],
+    "name": "V2V-Companion-Language-Select",
+    "description": "Sample flow for the Amazon Connect V2V companion panel. Collects the customer's language by DTMF and sets the v2v* Contact Attributes the companion app reads on contact connect.",
+    "type": "contactFlow",
+    "status": "SAVED"
+  },
+  "Actions": [
+    {
+      "Identifier": "5d3cac24-0b73-46c5-a9a6-0c1464b34c59",
+      "Type": "UpdateFlowLoggingBehavior",
+      "Parameters": { "FlowLoggingBehavior": "Enabled" },
+      "Transitions": { "NextAction": "687a4622-970f-4956-b1a1-eaa06b7e4526" }
+    },
+    {
+      "Identifier": "687a4622-970f-4956-b1a1-eaa06b7e4526",
+      "Type": "UpdateContactAttributes",
+      "Parameters": {
+        "Attributes": { "v2vAgentLanguage": "en-US" },
+        "TargetContact": "Current"
+      },
+      "Transitions": {
+        "NextAction": "4c71535c-39db-4285-9a00-d4caaf54e932",
+        "Errors": [{ "NextAction": "4c71535c-39db-4285-9a00-d4caaf54e932", "ErrorType": "NoMatchingError" }]
+      }
+    },
+    {
+      "Identifier": "4c71535c-39db-4285-9a00-d4caaf54e932",
+      "Type": "GetParticipantInput",
+      "Parameters": {
+        "Text": "For Spanish, press 1. For Mandarin, press 2. For French, press 3. For Thai, press 4. To continue in English, stay on the line.",
+        "StoreInput": "False",
+        "InputTimeLimitSeconds": "8"
+      },
+      "Transitions": {
+        "NextAction": "d3cc3825-609d-45a2-8e28-eee82c8b1805",
+        "Conditions": [
+          { "NextAction": "3ecf9f4c-c1a5-4aab-ace4-4613d95c1f4f", "Condition": { "Operator": "Equals", "Operands": ["1"] } },
+          { "NextAction": "0a669853-f9ec-4d8c-ad4e-0074b45c918f", "Condition": { "Operator": "Equals", "Operands": ["2"] } },
+          { "NextAction": "fe72626b-1268-4b2d-a6d7-af9c11b82a7a", "Condition": { "Operator": "Equals", "Operands": ["3"] } },
+          { "NextAction": "3b7560fa-76d7-4dea-a5c7-61901e0c0eda", "Condition": { "Operator": "Equals", "Operands": ["4"] } }
+        ],
+        "Errors": [
+          { "NextAction": "d3cc3825-609d-45a2-8e28-eee82c8b1805", "ErrorType": "InputTimeLimitExceeded" },
+          { "NextAction": "d3cc3825-609d-45a2-8e28-eee82c8b1805", "ErrorType": "NoMatchingError" }
+        ]
+      }
+    },
+    {
+      "Identifier": "3ecf9f4c-c1a5-4aab-ace4-4613d95c1f4f",
+      "Type": "UpdateContactAttributes",
+      "Parameters": {
+        "Attributes": {
+          "v2vCustomerLanguage": "es-ES",
+          "v2vCustomerVoiceId": "Joanna",
+          "v2vAgentVoiceId": "Lucia"
+        },
+        "TargetContact": "Current"
+      },
+      "Transitions": {
+        "NextAction": "c463d117-0e60-43db-8f49-6534968c1a80",
+        "Errors": [{ "NextAction": "c463d117-0e60-43db-8f49-6534968c1a80", "ErrorType": "NoMatchingError" }]
+      }
+    },
+    {
+      "Identifier": "0a669853-f9ec-4d8c-ad4e-0074b45c918f",
+      "Type": "UpdateContactAttributes",
+      "Parameters": {
+        "Attributes": { "v2vCustomerLanguage": "zh-CN" },
+        "TargetContact": "Current"
+      },
+      "Transitions": {
+        "NextAction": "c463d117-0e60-43db-8f49-6534968c1a80",
+        "Errors": [{ "NextAction": "c463d117-0e60-43db-8f49-6534968c1a80", "ErrorType": "NoMatchingError" }]
+      }
+    },
+    {
+      "Identifier": "fe72626b-1268-4b2d-a6d7-af9c11b82a7a",
+      "Type": "UpdateContactAttributes",
+      "Parameters": {
+        "Attributes": { "v2vCustomerLanguage": "fr-FR" },
+        "TargetContact": "Current"
+      },
+      "Transitions": {
+        "NextAction": "c463d117-0e60-43db-8f49-6534968c1a80",
+        "Errors": [{ "NextAction": "c463d117-0e60-43db-8f49-6534968c1a80", "ErrorType": "NoMatchingError" }]
+      }
+    },
+    {
+      "Identifier": "3b7560fa-76d7-4dea-a5c7-61901e0c0eda",
+      "Type": "UpdateContactAttributes",
+      "Parameters": {
+        "Attributes": { "v2vCustomerLanguage": "th-TH" },
+        "TargetContact": "Current"
+      },
+      "Transitions": {
+        "NextAction": "c463d117-0e60-43db-8f49-6534968c1a80",
+        "Errors": [{ "NextAction": "c463d117-0e60-43db-8f49-6534968c1a80", "ErrorType": "NoMatchingError" }]
+      }
+    },
+    {
+      "Identifier": "d3cc3825-609d-45a2-8e28-eee82c8b1805",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "No language was selected. Connecting you to an agent without translation."
+      },
+      "Transitions": {
+        "NextAction": "c463d117-0e60-43db-8f49-6534968c1a80",
+        "Errors": [{ "NextAction": "c463d117-0e60-43db-8f49-6534968c1a80", "ErrorType": "NoMatchingError" }]
+      }
+    },
+    {
+      "Identifier": "c463d117-0e60-43db-8f49-6534968c1a80",
+      "Type": "UpdateContactTargetQueue",
+      "Parameters": {
+        "QueueId": "arn:aws:connect:REGION:ACCOUNT_ID:instance/INSTANCE_ID/queue/QUEUE_ID"
+      },
+      "Transitions": {
+        "NextAction": "d65e1cdd-3293-413f-bcc6-44baab66edf7",
+        "Errors": [{ "NextAction": "bc7c33d3-eefe-40c9-851c-ff77c84368f4", "ErrorType": "NoMatchingError" }]
+      }
+    },
+    {
+      "Identifier": "d65e1cdd-3293-413f-bcc6-44baab66edf7",
+      "Type": "TransferContactToQueue",
+      "Parameters": {},
+      "Transitions": {
+        "NextAction": "bc7c33d3-eefe-40c9-851c-ff77c84368f4",
+        "Errors": [
+          { "NextAction": "bc7c33d3-eefe-40c9-851c-ff77c84368f4", "ErrorType": "QueueAtCapacity" },
+          { "NextAction": "bc7c33d3-eefe-40c9-851c-ff77c84368f4", "ErrorType": "NoMatchingError" }
+        ]
+      }
+    },
+    {
+      "Identifier": "bc7c33d3-eefe-40c9-851c-ff77c84368f4",
+      "Type": "MessageParticipant",
+      "Parameters": { "Text": "We are unable to connect you right now. Please try again later." },
+      "Transitions": {
+        "NextAction": "960df861-1cb6-4fb7-b3d1-b64b66a00d76",
+        "Errors": [{ "NextAction": "960df861-1cb6-4fb7-b3d1-b64b66a00d76", "ErrorType": "NoMatchingError" }]
+      }
+    },
+    {
+      "Identifier": "960df861-1cb6-4fb7-b3d1-b64b66a00d76",
+      "Type": "DisconnectParticipant",
+      "Parameters": {},
+      "Transitions": {}
+    }
+  ]
+}
