@@ -4,6 +4,27 @@ Changes made in this fork of the Amazon Connect V2V sample, which repositions th
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Upstream fork point: `382803a`.
 
+## [Unreleased]
+
+First deployment of the fork to a live Amazon Connect instance, and the fixes that shook out of it. No webapp code changed.
+
+### Fixed
+
+- **The sample contact flow could not be imported.** `GetParticipantInput` requires a `NoMatchingCondition` error branch, which the flow did not have; `CreateContactFlow` rejected it with `Action is missing required error. Error: NoMatchingCondition, Path: Actions[2]`. The static structural check done in `1.0.0` could not have caught this — it is a service-side validation rule, not a dangling transition. The branch now routes to the same "no language selected" message as the timeout path.
+
+### Added
+
+- **`README-Companion.md` → "Deploying from an empty AWS account".** `SETUP.md` lists an Amazon Connect instance as a prerequisite, so nothing documented how to go from an empty account to a working demo. Covers CDK bootstrap, `create-instance` + `create-user` (the API does not create an agent user the way the console wizard does), the claim-a-number retry loop, CLI flow import, and a per-DTMF-digit validation matrix. Cross-references `SETUP.md` for the overlapping steps rather than duplicating them.
+- Three non-obvious gotchas recorded in the same section, each hit during this deployment: `configure.js` requires `--flag=value` (a space-separated value is silently stored as boolean `true`); the first `cdk deploy` after `cdk bootstrap` can fail with `getaddrinfo ENOTFOUND` on the asset bucket while DNS propagates; and `InvalidContactFlowException` hides its actual message unless you pass `--cli-error-format json`.
+
+### Changed
+
+- The sample contact flow is no longer labelled "not import-tested" — it has now been accepted by `CreateContactFlow` against a live instance.
+
+### Known gaps
+
+- Closes the `1.0.0` gap "flow import has not been tested". **Does not close** the `contact.getAttributes()` `{ name, value }` envelope assumption — the stack is deployed and a flow is attached to a live number, but no inbound call has been placed yet, so the auto-configuration path still has not executed.
+
 ## [1.0.1] - 2026-09-03
 
 Bug fix for a defect introduced by `1.0.0`'s auto-configuration. No new features.

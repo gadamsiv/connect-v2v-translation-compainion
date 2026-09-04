@@ -70,12 +70,11 @@ If no customer-language attribute is present, nothing is changed and the agent's
 | 4 | `th-TH` | Exercises the unsupported-language banner — Polly cannot speak Thai |
 | timeout / no match | nothing | Exercises the no-attribute path, where the agent's saved selections stand |
 
-**Before importing, note two things:**
+**Before importing:** the queue is a placeholder — `arn:aws:connect:REGION:ACCOUNT_ID:instance/INSTANCE_ID/queue/QUEUE_ID`. Replace it with a real queue ARN, or the import is rejected. In the console, open the **Set working queue** block after import and pick a queue.
 
-1. The queue is a placeholder — `arn:aws:connect:REGION:ACCOUNT_ID:instance/INSTANCE_ID/queue/QUEUE_ID`. Open the **Set working queue** block after import and pick a real queue, or publishing will fail.
-2. This flow's structure is verified (no dangling transitions, every action reachable from the entry point) but **it has not been import-tested against a live Amazon Connect instance.** If import rejects it, the flow is small enough to rebuild by hand in a few minutes: a **Set contact attributes** block setting `v2vCustomerLanguage`, then **Set working queue**, then **Transfer to queue**. That minimal three-block version is all the app needs.
+To import: Amazon Connect console → **Routing → Flows → Create flow → ⌄ (top right) → Import flow (beta)**, then publish and attach it to a phone number. Or import it from the CLI, which validates and publishes in one call — see [Deploying from an empty AWS account](#deploying-from-an-empty-aws-account).
 
-To import: Amazon Connect console → **Routing → Flows → Create flow → ⌄ (top right) → Import flow (beta)**, then publish and attach it to a phone number.
+This flow has been import-validated against a live instance (`CreateContactFlow` accepted it on 2026-09-03). One thing that validation caught and static inspection did not: `GetParticipantInput` **must** carry a `NoMatchingCondition` error branch alongside `InputTimeLimitExceeded`. Without it the import fails with `Action is missing required error. Error: NoMatchingCondition, Path: Actions[2]`. Keep that branch if you edit the menu.
 
 ### How the languages map
 
@@ -136,9 +135,99 @@ The banner clears on the next contact and in `cleanUpUI()` when the contact ends
 
 Watch the browser console for `CCP-V2V - autoConfigureLanguages - ...` lines to see what was detected and applied.
 
+## Deploying from an empty AWS account
+
+`SETUP.md` is the deployment guide and remains authoritative for steps 4–8 (configure → deploy → approved origins → Cognito user → re-configure). But it lists an Amazon Connect instance as a **prerequisite**, so it does not cover a brand-new account. This section fills only that gap, plus the flow wiring. Do not duplicate `SETUP.md` here.
+
+Everything below is CLI, non-interactive, and was run end to end on 2026-09-03. Set your profile and region once:
+
+```bash
+export AWS_PROFILE=<<yourProfile>> AWS_DEFAULT_REGION=<<yourRegion>>
+```
+
+### 1. Bootstrap CDK (new account/region only)
+
+```bash
+npx cdk bootstrap aws://<<accountId>>/<<region>>
+```
+
+Immediately after bootstrap, the first `cdk deploy` can fail with `getaddrinfo ENOTFOUND cdk-hnb659fds-assets-<<accountId>>-<<region>>.s3.<<region>>.amazonaws.com`. That is DNS propagation for the just-created asset bucket, not a permissions problem — wait a moment and re-run.
+
+### 2. Create the Amazon Connect instance
+
+```bash
+aws connect create-instance --identity-management-type CONNECT_MANAGED \
+  --instance-alias <<yourAlias>> --inbound-calls-enabled --outbound-calls-enabled
+```
+
+Poll `aws connect describe-instance --instance-id <<id>>` until `InstanceStatus` is `ACTIVE` (about a minute). The instance URL is `https://<<yourAlias>>.my.connect.aws` — that is the `connect-instance-url` value for `npm run configure`.
+
+Creating an instance through the API does **not** create an agent user the way the console wizard does, so create one. `list-security-profiles` and `list-routing-profiles` give you the default `Admin` and `Basic Routing Profile` ids:
+
+```bash
+aws connect create-user --instance-id <<id>> --username <<agentUsername>> \
+  --password '<<strongPassword>>' \
+  --identity-info FirstName=<<first>>,LastName=<<last>>,Email=<<email>> \
+  --phone-config PhoneType=SOFT_PHONE,AutoAccept=false,AfterContactWorkTimeLimit=30 \
+  --security-profile-ids <<adminSecurityProfileId>> \
+  --routing-profile-id <<basicRoutingProfileId>>
+```
+
+`PhoneType=SOFT_PHONE` is required — this app takes over the WebRTC audio path and there is nothing to take over on a desk phone.
+
+### 3. Claim a phone number
+
+`search-available-phone-numbers` returns numbers that other accounts may claim between your search and your claim, so `ClaimPhoneNumber` returning `Phone number not available` is normal. Loop over the candidates:
+
+```bash
+aws connect search-available-phone-numbers --target-arn <<instanceArn>> \
+  --phone-number-country-code US --phone-number-type DID --max-results 10 \
+  --query 'AvailableNumbersList[].PhoneNumber' --output text | tr '\t' '\n' > /tmp/nums.txt
+
+while IFS= read -r N; do
+  aws connect claim-phone-number --target-arn <<instanceArn>> --phone-number "$N" && break
+done < /tmp/nums.txt
+```
+
+Note the `tr '\t' '\n'`: `--output text` returns one tab-separated line, and **zsh does not word-split unquoted expansions**, so `for N in $(...)` passes the whole line as a single argument.
+
+### 4. Configure and deploy
+
+Now follow `SETUP.md` steps 4–8. Two things that guide does not spell out:
+
+- `npm run configure` hardcodes `-il` (interactive). To run it non-interactively, call the script directly: `node config/configure.js --flag=value ...`.
+- **Values must use `--flag=value`, not `--flag value`.** `getArgs()` in `config/configure.js` splits each argument on `=`; a space-separated argument is parsed as the boolean `true` and stored that way with no error. Always dry-run with `-t` first and read back `config.cache.json` before writing to SSM.
+
+### 5. Import the flow and attach it to the number
+
+Replace the placeholder queue ARN in a copy, leaving the repo sample untouched, then create the flow. `CreateContactFlow` validates and publishes in one call:
+
+```bash
+aws connect create-contact-flow --instance-id <<id>> \
+  --name "V2V-Companion-Language-Select" --type CONTACT_FLOW \
+  --content file:///tmp/v2v-flow-deployed.json --cli-error-format json
+
+aws connect associate-phone-number-contact-flow \
+  --phone-number-id <<phoneNumberId>> --instance-id <<id>> --contact-flow-id <<flowId>>
+```
+
+Pass `--cli-error-format json` — without it, `InvalidContactFlowException` prints `problems: <complex value>` and hides the actual validation message.
+
+### 6. Validate on real calls
+
+One call per DTMF digit exercises the whole feature. Watch the browser console for `CCP-V2V - autoConfigureLanguages - ...`.
+
+| Dial | Press | Expected in the companion panel |
+| --- | --- | --- |
+| your claimed number | 1 | Spanish both ways; Amazon Polly voices become `Joanna` (to agent) and `Lucia` (to customer) |
+| " | 2 | Customer Transcribe `zh-CN`, and the Agent column's Amazon Polly language resolves to `cmn-CN` |
+| " | 3 | French both ways, no code mapping involved |
+| " | 4 | Amber banner: Amazon Polly cannot synthesize Thai; no translated speech to the customer |
+| " | nothing | No attributes set; your saved selections stand and no banner appears |
+
 ## Using the companion panel
 
-Deploy per `SETUP.md` first. Then:
+Deploy per `SETUP.md` first — or, for a brand-new account, see [Deploying from an empty AWS account](#deploying-from-an-empty-aws-account). Then:
 
 1. Open the Amazon Connect agent workspace and go available there.
 2. Open this app in a second window or tab (the CloudFront URL, or `https://localhost:5173` for local dev). Log in when Cognito prompts — see [Open item](#open-item-cognito-login) below.
